@@ -1,4 +1,4 @@
-module Logic exposing (Msg, decode, encode)
+module Logic exposing (Msg, decode, encode, BattleAction(..), Army(..), Piece(..), Color(..), Honesty(..), PlayerModel, initializeBattle, updatePieceAt, getPieceAt, updateHonestyAt, updateColorAt, initialArmy, Spot)
 
 type alias Name = String
 type alias Spot = Int
@@ -19,6 +19,9 @@ type Piece
 type Army 
         = Army Piece Piece Piece Piece Piece
 
+initialArmy = 
+        Army Obliterated Obliterated Obliterated Obliterated Obliterated
+
 type Msg 
         = SetArmy Army
         | SetName Name
@@ -33,18 +36,6 @@ type alias PlayerModel =
         }
 
 
-playerModel player =
-        case player of
-                Local _ pm -> pm
-                Remote _ _ pm -> pm
-                AI pm -> pm
-
-playerType player =
-        case player of
-                Local _ _ -> Local
-                Remote _ _ _ -> Remote
-                AI _ -> AI
-
 type Mood
         = Intrigued
         | Tense
@@ -53,10 +44,6 @@ type Mood
         | Crushed
         | Triumphant
 
-type alias PlacementModel =
-        { p1 : Maybe PlayerModel
-        , p2 : Maybe PlayerModel
-        }
 
 type alias BattleModel =
         { p1 : PlayerModel
@@ -65,7 +52,7 @@ type alias BattleModel =
         } 
 
 type BattleState
-        = Placement PlacementModel
+        = Initialized (Maybe Army) (Maybe Army)
         | Battle BattleModel
         | Player1Victory
         | Player2Victory
@@ -74,8 +61,6 @@ type BattleAction
         = Switch Spot Spot
         | Fire Spot
         | Forfeit
-        | PlacePlayer1 Army
-        | PlacePlayer2 Army
 
 type Turn
         = First
@@ -86,6 +71,14 @@ type BattlePhase
         | Player2 Turn
 
 
+initializeBattle =
+        Initialized Nothing Nothing
+
+decode = 
+        Nothing
+
+encode =
+        Nothing
 
 getPieceAt spot (Army p1 p2 p3 p4 p5) =
         case spot of
@@ -96,6 +89,7 @@ getPieceAt spot (Army p1 p2 p3 p4 p5) =
                 5 -> p5
                 _ -> Obliterated
 
+updatePieceAt : Spot -> Piece -> Army -> Army
 updatePieceAt spot newPiece (Army p1 p2 p3 p4 p5) =
         case spot of
                 1 -> Army newPiece p2 p3 p4 p5
@@ -105,15 +99,49 @@ updatePieceAt spot newPiece (Army p1 p2 p3 p4 p5) =
                 5 -> Army p1 p2 p3 p4 newPiece
                 _ -> Army p1 p2 p3 p4 p5
 
+updateColorAt spot newColor (Army p1 p2 p3 p4 p5 as army) =
+        let 
+            piece = getPieceAt spot army
+                |> (\p -> case p of
+                        Piece _ h -> Piece newColor h
+                        _ -> Piece newColor Authentic
+                )
+        in
+        case spot of
+                1 -> Army piece p2 p3 p4 p5
+                2 -> Army p1 piece p3 p4 p5
+                3 -> Army p1 p2 piece p4 p5
+                4 -> Army p1 p2 p3 piece p5
+                5 -> Army p1 p2 p3 p4 piece
+                _ -> Army p1 p2 p3 p4 p5
+
+
+updateHonestyAt spot newHonesty (Army p1 p2 p3 p4 p5 as army) =
+        let 
+            piece = getPieceAt spot army
+                |> (\p -> case p of
+                        Piece c _ -> Piece c newHonesty
+                        _ -> Piece Orange newHonesty
+                )
+        in
+        case spot of
+                1 -> Army piece p2 p3 p4 p5
+                2 -> Army p1 piece p3 p4 p5
+                3 -> Army p1 p2 piece p4 p5
+                4 -> Army p1 p2 p3 piece p5
+                5 -> Army p1 p2 p3 p4 piece
+                _ -> Army p1 p2 p3 p4 p5
+
 killPieceAt spot =
         updatePieceAt spot Obliterated 
 
+switchActivePieces : Spot -> Spot -> BattleModel -> BattleModel
 switchActivePieces spot1 spot2 ({p1, p2, phase} as bMod) =
         case phase of 
                 Player1 _ -> 
-                        { bMod | p1 = { p1 | army = updatePieceAt spot1 spot2 p1.army } }
+                        { bMod | p1 = { p1 | army = updatePieceAt spot2 (getPieceAt spot1 p1.army) (updatePieceAt spot1 (getPieceAt spot2 p1.army) p1.army) } }
                 Player2 _ ->
-                        { bMod | p2 = { p2 | army = updatePieceAt spot1 spot2 p2.army } }
+                        { bMod | p2 = { p1 | army = updatePieceAt spot2 (getPieceAt spot1 p2.army) (updatePieceAt spot1 (getPieceAt spot2 p2.army) p2.army) } }
 
 
 modelWithPhase p bMod =
@@ -133,14 +161,12 @@ reduceTurns bMod =
 
                         Player2 Second -> 
                                 modelWithPhase <| Player1 First
-                        _ -> 
-                                identity
 
 
 p1Model =
-        .p1 >> playerModel
+        .p1 
 p2Model =
-        .p2 >> playerModel
+        .p2
 
 victory bMod =
         case bMod.phase of
@@ -161,7 +187,7 @@ hasUnits =
                         _ ->
                                 Just bMod
         in
-        Maybe.map (\bMod ->
+        Maybe.andThen (\bMod ->
                 case (bMod.phase, bMod.p1.army, bMod.p2.army) of
                         (Player1 _, Army Obliterated Obliterated Obliterated Obliterated Obliterated, _) ->
                                 Nothing
@@ -172,9 +198,9 @@ hasUnits =
         )
 
 
-hasHealth : Maybe Player -> Maybe Player
-hasHealth mp =
-        Maybe.map (\bMod ->
+hasHealth : Maybe BattleModel -> Maybe BattleModel
+hasHealth =
+        Maybe.andThen (\bMod ->
                 case (bMod.phase, bMod.p2.health > 0, bMod.p1.health > 0) of
                         (Player1 _, True, _) ->
                                 Just bMod
@@ -184,8 +210,8 @@ hasHealth mp =
                                 Nothing
         )
 
-validate : Maybe BattleModel -> BattleModel -> BattleState
-validate mb bMod =
+validate : BattleModel -> Maybe BattleModel -> BattleState
+validate bMod mb =
         case mb of
                 Just b -> Battle b
                 Nothing ->
@@ -208,13 +234,6 @@ checkVictory bMod =
         |> hasUnits
         |> hasHealth
         |> validate bMod
-
-ready pMod =
-        case (playerModel pMod.p1, playerModel pMod.p2) of
-                (Just p1, Just p2) ->
-                        Battle { p1 = p1, p2 = p2, phase = Player1 First }
-                _ ->
-                        Placement pMod
 
 type ShotResolution 
         = NoDamage
@@ -247,10 +266,10 @@ fireActivePiece spot bMod =
                                 3 -> 3
                                 4 -> 2
                                 5 -> 1
+                                _ -> 1
                 armyGetter p =
                             bMod
                             |> p
-                            |> playerModel
                             |> .army
                 resolveShot src target =
                         shotResolver (armyGetter src |> getPieceAt spot) (armyGetter target |> getPieceAt translatedSpot)
@@ -292,12 +311,6 @@ updateBattleState bAct bState =
                 (Battle bMod, Forfeit) ->
                         bMod
                         |> victory
-                (Placement pMod, PlacePlayer1 army) ->
-                        { pMod | p1 = Just ((playerType pMod.p1) (PlayerModel army 5)) }
-                        |> ready
-                (Placement pMod, PlacePlayer2 army) ->
-                        Placement { pMod | p2 = Just ((playerType pMod.p2) (PlayerModel army 5)) }
-                        |> ready
                 (_, _) ->
                         bState
 

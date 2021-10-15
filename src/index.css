@@ -12,3 +12,10 @@ main div {
 	position: absolute;
 	z-index: 1;
 }
+svg > text {
+	font-size: 8vh;
+	fill: black;
+}
+#help-overlay {
+	position: absolute;
+	z-index: 2000;

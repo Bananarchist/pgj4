@@ -5,7 +5,9 @@ import Svg.Attributes
 import Svg.Events
 import Html exposing (Html)
 import Html.Attributes
+import Basics.Extra exposing (flip) 
 import Html.Events
+import Time
 import Array exposing (Array)
 import Browser
 import Browser.Events
@@ -21,12 +23,13 @@ import Angle
 import Scene3d.Light
 import Luminance
 import Illuminance
+import Logic exposing (Spot, Army(..), Honesty(..), Color(..), Piece(..), updateHonestyAt, updateColorAt, initialArmy)
 import LuminousFlux
 import Axis3d
 import Scene3d
 import Point3d
 import Point3d.Projection
-import Color
+import Color as StdColor
 import Block3d
 import Scene3d.Material as Material
 import Camera3d
@@ -36,21 +39,6 @@ import Angle
 import Length
 import Pixels
 
-type PieceColor
-        = Orange
-        | Blue
-
-
-type Honesty 
-        = Authentic
-        | Deceitful
-
-type Piece 
-        = Obliterated
-        | Active PieceColor Honesty
-
-type Army
-        = Army Piece Piece Piece Piece Piece
 
 type ShotResolution 
         = NoDamage
@@ -59,24 +47,17 @@ type ShotResolution
         
 samePieceColor piece1 piece2 =
         case (piece1, piece2) of
-                (Active Orange _, Active Orange _) -> True
-                (Active Blue _, Active Blue _) -> True
+                (Piece Orange _, Piece Orange _) -> True
+                (Piece Blue _, Piece Blue _) -> True
                 (_, _) -> False
 
 shotResolver : Piece -> Piece -> ShotResolution
 shotResolver src target =
         case (target, samePieceColor src target) of
                 (Obliterated, _) -> DamageTaken
-                (Active _ _, True) -> NoDamage
-                (Active _ _, False) -> TargetObliterated
+                (Piece _ _, True) -> NoDamage
+                (Piece _ _, False) -> TargetObliterated
 
-
-colorString color honesty =
-        case (color, honesty) of
-                (Orange, Deceitful) -> "blue"
-                (Blue, Deceitful) -> "orange"
-                (Orange, _) -> "orange"
-                (Blue, _) -> "blue"
 
 
 
@@ -87,6 +68,7 @@ type GameScene
         | Credits
         | Battle BattleModel
         | Tutorial TutorialPhase
+        | Animation (List (Animation, Float)) GameScene
 
 
 type GameConfigModel
@@ -95,6 +77,8 @@ type GameConfigModel
         | SDVChosen String
         | SDVChosenOneName String String
         | SDVConfigured String String
+        | SDVP1ChoosingPieces (String, PlacementModel) String
+        | SDVP2ChoosingPieces (String, Army) (String, PlacementModel)
 
 type GameConfigMsg 
         = SetPlayModeAI
@@ -134,7 +118,7 @@ type BattleMsg
         = SelectPiece Int
         | DeselectPiece
         | PlacePiece Int
-        | MaskPiece Int PieceColor
+        | MaskPiece Int Color
         | WatchRecap
         | SkipRecap
         | Terminate
@@ -152,19 +136,19 @@ type alias BattleModel =
 
 
 initialPlayerPieces =
-        [ Active Orange Authentic
-        , Active Orange Authentic
-        , Active Orange Authentic
-        , Active Blue Authentic
-        , Active Blue Authentic
+        [ Piece Orange Authentic
+        , Piece Orange Authentic
+        , Piece Orange Authentic
+        , Piece Blue Authentic
+        , Piece Blue Authentic
         ]
         
 initialOpponentPieces =
-        [ Active Orange Authentic
-        , Active Orange Authentic
-        , Active Blue Authentic
-        , Active Blue Authentic
-        , Active Blue Authentic
+        [ Piece Orange Authentic
+        , Piece Orange Authentic
+        , Piece Blue Authentic
+        , Piece Blue Authentic
+        , Piece Blue Authentic
         ]
 
 
@@ -216,6 +200,17 @@ initConfig =
         , sound = True
         }
 
+type Animation
+    = PlayerFire Spot
+    | OpponentFire Spot
+    | PlayerMove Spot Spot
+    | OpponentMove Spot Spot
+    | PlayerDamage
+    | OpponentDamage
+
+fullAnimationLength a =
+    case a of 
+        _ -> 1002
 
 type alias Model =
         { gameScene : GameScene
@@ -234,6 +229,17 @@ mapIndexedPieces fn (Army p1 p2 p3 p4 p5) =
 
 armyPiecesList (Army p1 p2 p3 p4 p5) =
         [p1, p2, p3, p4, p5]
+
+armyFromList l =
+        let
+                cl = (List.length l) |> (-) 5 |> flip List.repeat Obliterated |> (++) l
+                p1 = List.head cl |> Maybe.withDefault Obliterated
+                p2 = List.drop 1 cl |> List.head |> Maybe.withDefault Obliterated
+                p3 = List.drop 2 cl |> List.head |> Maybe.withDefault Obliterated
+                p4 = List.drop 3 cl |> List.head |> Maybe.withDefault Obliterated
+                p5 = List.drop 4 cl |> List.head |> Maybe.withDefault Obliterated
+        in
+        Army p1 p2 p3 p4 p5
 
 getPieceAt spot (Army p1 p2 p3 p4 p5) =
         case spot of
@@ -451,6 +457,7 @@ type Msg
         | BattleSceneMsg BattleMsg
         | TitleMenuSceneMsg TitleMenuMsg
         | GameConfigSceneMsg GameConfigMsg
+        | KeyFrame Float
 
 type Menu
         = Menu (List MenuOption)
@@ -467,6 +474,11 @@ optionsForMenu menu =
 
 titleMenu = Menu ["Start Game", "Tutorial", "Options", "Credits"]
 battleMenu = ArmyList
+
+type PlacementAction
+        = SetColor Spot Color
+        | SetHonesty Spot Honesty
+
 
 -- gameplayscreen views
 
@@ -510,30 +522,30 @@ type Row
         = Back
         | Front
 
-
-entityView row spot piece =
+pieceView : Piece -> Scene3d.Entity coordinates
+pieceView piece =
         let
             cubeSize = 2
         in
         case piece of
                 Obliterated ->
                         Scene3d.group []
-                Active color honesty ->
+                Piece color honesty ->
                         let
                                 (frontColor, backColor) = 
                                         case (color, honesty) of
                                                 (Orange, Authentic) ->
-                                                        (Color.orange, Color.orange)
+                                                        (StdColor.orange, StdColor.orange)
                                                 (Orange, Deceitful) ->
-                                                        (Color.blue, Color.orange)
+                                                        (StdColor.blue, StdColor.orange)
                                                 (Blue, Authentic) ->
-                                                        (Color.blue, Color.blue)
+                                                        (StdColor.blue, StdColor.blue)
                                                 (Blue, Deceitful) ->
-                                                        (Color.orange, Color.blue)
+                                                        (StdColor.orange, StdColor.blue)
                                         
                         in
                         Scene3d.group
-                                [ Scene3d.quad (Material.metal { baseColor = Color.darkCharcoal, roughness = 1.0 })
+                                [ Scene3d.quad (Material.metal { baseColor = StdColor.grey, roughness = 1.0 })
                                     (Point3d.meters -1 -1 -1)
                                     (Point3d.meters 1 -1 -1)
                                     (Point3d.meters 1 1 -1)
@@ -551,13 +563,13 @@ entityView row spot piece =
                                     (Point3d.meters 1 1 1)
                                     (Point3d.meters -1 1 1)
                                     -- left facing
-                                , Scene3d.quad (Material.metal { baseColor = Color.darkCharcoal, roughness = 1.0 })
+                                , Scene3d.quad (Material.metal { baseColor = StdColor.grey, roughness = 1.0 })
                                     (Point3d.meters -1 -1 -1)
                                     (Point3d.meters -1 -1 1)
                                     (Point3d.meters 1 -1 1)
                                     (Point3d.meters 1 -1 -1)
                                     --slightly right
-                                , Scene3d.quad (Material.metal { baseColor = Color.darkCharcoal, roughness = 1.0 })
+                                , Scene3d.quad (Material.metal { baseColor = StdColor.grey, roughness = 1.0 })
                                     (Point3d.meters 1 1 -1)
                                     (Point3d.meters -1 1 -1)
                                     (Point3d.meters -1 1 1)
@@ -568,11 +580,15 @@ entityView row spot piece =
                                     (Point3d.meters 1 -1 -1)
                                     (Point3d.meters 1 1 -1)
                                     (Point3d.meters 1 1 1)
-
                                 ]
-                                |> p2faceoff row
-                                |> spotTranslation spot
-                                |> battleSpace row
+entityView row spot piece =
+        pieceView piece
+                |> p2faceoff row
+                |> spotTranslation spot
+                |> battleSpace row
+
+
+
 p2faceoff row =
         case row of
                 Back ->
@@ -602,21 +618,32 @@ armyFrontView =
 
 menuArmy count = 
         case count of 
-                1 -> Army (Active Orange Authentic) Obliterated Obliterated Obliterated Obliterated
-                2 -> Army (Active Orange Authentic) (Active Orange Authentic) Obliterated Obliterated Obliterated
-                3 -> Army (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) Obliterated Obliterated
-                4 -> Army (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) Obliterated
-                5 -> Army (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) (Active Orange Authentic) 
+                1 -> Army (Piece Orange Authentic) Obliterated Obliterated Obliterated Obliterated
+                2 -> Army (Piece Orange Authentic) (Piece Orange Authentic) Obliterated Obliterated Obliterated
+                3 -> Army (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) Obliterated Obliterated
+                4 -> Army (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) Obliterated
+                5 -> Army (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) (Piece Orange Authentic) 
                 _ -> Army Obliterated Obliterated Obliterated Obliterated Obliterated
 
-menuView width height menu =
-        let 
+menuView =
+        menuViewPlusEntities []
+
+menuWithNormalPieces width height menu = 
+    let
                 options = optionsForMenu menu
                 totalOptions = List.length options
                 pieces = 
                         totalOptions
                         |> menuArmy
                         |> armyFrontView
+    in
+    menuViewPlusEntities pieces width height menu
+
+
+menuViewPlusEntities entities width height menu =
+        let 
+                options = optionsForMenu menu
+                totalOptions = List.length options
                 hv = (healthView totalOptions Front)
                 mainLight =
                         Scene3d.Light.point (Scene3d.Light.castsShadows True)
@@ -630,14 +657,14 @@ menuView width height menu =
                                 , Svg.Attributes.width (String.fromInt width)
                                 , Svg.Attributes.height (String.fromInt height)
                                 ]
-                                (List.indexedMap (\i o -> scene3dText o i (toFloat width) (toFloat height)) options)
+                                (List.indexedMap (\i o -> scene3dText o i width height) options)
         in
         [ text
         , Scene3d.custom
-                { entities = hv ++ pieces
+                { entities = entities ++ hv 
                 , camera = camera
                 , clipDepth = Length.meters 1
-                , background = Scene3d.backgroundColor Color.black
+                , background = Scene3d.backgroundColor StdColor.black
                 , dimensions = ( Pixels.pixels width, Pixels.pixels height )
                 , lights = Scene3d.oneLight mainLight
                 , exposure = Scene3d.exposureValue 8 
@@ -673,7 +700,7 @@ battleView width height {player1, player2} =
                 { entities = hv ++ pieces ++ opp
                 , camera = camera
                 , clipDepth = Length.meters 1
-                , background = Scene3d.backgroundColor Color.black
+                , background = Scene3d.backgroundColor StdColor.black
                 , dimensions = ( Pixels.pixels width, Pixels.pixels height )
                 , lights = Scene3d.oneLight mainLight
                 , exposure = Scene3d.exposureValue 8 
@@ -682,11 +709,12 @@ battleView width height {player1, player2} =
                 , antialiasing = Scene3d.multisampling
                 }
 
+scene3dText : String -> Int -> Int -> Int -> Svg Msg
 scene3dText string spot width height =
         let
                 --spot = 5 - s
                 screenRect = 
-                        Rectangle2d.from Point2d.origin (Point2d.pixels width height)
+                        Rectangle2d.from Point2d.origin (Point2d.pixels (toFloat width) (toFloat height))
 
                                 
                 spotRect3d =
@@ -717,7 +745,7 @@ scene3dText string spot width height =
                 [ Svg.Attributes.fill "red"
                 , Svg.Attributes.x x
                 , Svg.Attributes.y y
-                , Svg.Attributes.transform ("rotate(-90 " ++ x ++ " " ++ y ++");")
+                , Svg.Attributes.transform ("rotate(-90 " ++ x ++ " " ++ y ++") translate(0 " ++ (height // 100 * 8 |> String.fromInt ) ++ ")")
                 ] 
                 [ Svg.text string ]
 
@@ -744,7 +772,7 @@ healthView total facing =
                 healthy = 
                         Scene3d.quad (Material.emissive Scene3d.Light.daylight (Luminance.nits 300))
                 dead =
-                        Scene3d.quad (Material.color Color.black)
+                        Scene3d.quad (Material.color StdColor.black)
                 --mapFn : Int -> Scene3d.Entity coordinates -> Scene3d.Entity coordinates
                 mapFn index entities =
                         spotTranslation index entities |> faceHealthIndicators facing
@@ -780,42 +808,125 @@ fullScreenSvgAttrs width height =
         , Svg.Attributes.height (String.fromInt height)
         ]
 
-helpOverlayView {gameScene, width, height } =
+helpOverlayView {helpOverlay, gameScene, width, height } =
         let
                 xformula totalOptions spot = width // totalOptions * spot
                 textXFormula totalOptions spot = width // (totalOptions * 2) * (spot * 2 + 1)
         in
-        case gameScene of 
-                Title ->
-                        let
-                                opts = optionsForMenu titleMenu
-                                titleX = xformula (List.length opts)
-                                textX = textXFormula (List.length opts)
-                        in
-                        Svg.svg
-                                (Svg.Attributes.class "help-overlay" :: fullScreenSvgAttrs width height)
-                                (List.indexedMap (\spot label ->
-                                        Svg.g [] [
-                                                Svg.line
-                                                        [ Svg.Attributes.y1 "0"
-                                                        , Svg.Attributes.y2 (String.fromInt height)
-                                                        , Svg.Attributes.x1 (titleX spot |> String.fromInt)
-                                                        , Svg.Attributes.x2 (titleX spot |> String.fromInt)
-                                                        , Svg.Attributes.stroke "green"
-                                                        ] []
-                                                , Svg.text_ 
-                                                        [ Svg.Attributes.x (textX spot |> String.fromInt)
-                                                        , Svg.Attributes.y (height // 2 - 10 |> String.fromInt)
-                                                        , Svg.Attributes.strokeDasharray "4"
-                                                        , Svg.Attributes.fill "green"
-                                                        ] [ Svg.text ((String.fromInt spot) ++ " " ++ label) ]
-                                                ]
-                                        ) opts
-                                )
-                _ ->
-                        Svg.svg [] []
+        if helpOverlay then
+                case gameScene of 
+                        Title ->
+                                let
+                                        opts = optionsForMenu titleMenu
+                                        titleX = xformula (List.length opts)
+                                        textX = textXFormula (List.length opts)
+                                in
+                                Svg.svg
+                                        (Svg.Attributes.id "help-overlay" :: fullScreenSvgAttrs width height)
+                                        (List.indexedMap (\spot label ->
+                                                Svg.g [] [
+                                                        Svg.line
+                                                                [ Svg.Attributes.y1 "0"
+                                                                , Svg.Attributes.y2 (String.fromInt height)
+                                                                , Svg.Attributes.x1 (titleX spot |> String.fromInt)
+                                                                , Svg.Attributes.x2 (titleX spot |> String.fromInt)
+                                                                , Svg.Attributes.stroke "green"
+                                                                , Svg.Attributes.strokeDasharray "4"
+                                                                ] []
+                                                        , Svg.text_ 
+                                                                [ Svg.Attributes.x (textX spot |> String.fromInt)
+                                                                , Svg.Attributes.y (height // 2 - 10 |> String.fromInt)
+                                                                , Svg.Attributes.fill "green"
+                                                                ] [ Svg.text ((String.fromInt spot) ++ " " ++ label) ]
+                                                        ]
+                                                ) opts
+                                        )
+                        _ ->
+                                Svg.svg [] []
 
-                        
+        else 
+                Svg.svg [] []
+
+
+type alias PlacementModel =
+        List Piece
+
+
+threePlacements model =
+        List.filterMap (\p ->
+                case p of
+                        Piece Orange _ ->
+                                Just True
+                        Piece Blue _ ->
+                                Just False
+                        _ ->
+                                Nothing
+                ) model
+                |> List.partition identity
+                |> Tuple.mapBoth List.length List.length
+                |> (\(orange, blue) -> if orange == 3 then Just Orange else if blue == 3 then Just Blue else Nothing)
+
+        
+boxMenuItemTranslations : Spot -> Piece -> Scene3d.Entity coordinates
+boxMenuItemTranslations spot piece =
+        pieceView piece
+        |> Scene3d.scaleAbout Point3d.origin 0.6 
+        |> p2faceoff Back
+        |> spotTranslation spot
+        |> Scene3d.translateBy (Vector3d.meters -10 0 0)
+        
+spotHighlighter spot =
+        Scene3d.quad (Material.emissive Scene3d.Light.fluorescent (Luminance.nits 10000))
+            (Point3d.meters -1 -1 -1)
+            (Point3d.meters 1 -1 -1)
+            (Point3d.meters 1 1 -1)
+            (Point3d.meters -1 1 -1)
+        |> Scene3d.scaleAbout Point3d.origin 1.1
+        |> p2faceoff Front
+        |> spotTranslation spot
+        |> Scene3d.translateBy (Vector3d.meters 0.65 0 0)
+
+placementOptions model =
+        case threePlacements model of
+                Just Orange ->
+                        [ Piece Blue Authentic, Piece Blue Deceitful ]
+                Just Blue ->
+                        [ Piece Orange Authentic, Piece Orange Deceitful ]
+                Nothing ->
+                        [ Piece Blue Authentic, Piece Blue Deceitful ]
+                        ++ [ Piece Orange Authentic, Piece Orange Deceitful ]
+
+placementView width height model =
+        let
+                currentArmy = armyFromList model
+                currentBox = List.length model
+                armyEntities = armyFrontView currentArmy
+                highlightEntity = spotHighlighter currentBox
+                boxEntityMapper = 
+                        List.indexedMap boxMenuItemTranslations
+
+                (menu, optionEntities) = 
+                        if currentBox == 5 then
+                                (Confirmation, [])
+                        else
+                                case threePlacements model of
+                                        Just Orange ->
+                                                (Menu ["Honest Orange", "Deceitful Orange", "Cancel"], boxEntityMapper (placementOptions model))
+                                        Just Blue ->
+                                                (Menu ["Honest Blue", "Mendicant Blue", "Cancel"], boxEntityMapper (placementOptions model))
+                                        Nothing ->
+                                                (Menu ["Honest Blue", "Masked Blue", "Honest Orange", "Dishonest Orange", "Cancel"] 
+                                                , boxEntityMapper (placementOptions model)
+                                                )
+                entities : List (Scene3d.Entity coordinates)
+                entities = highlightEntity :: armyEntities ++ optionEntities
+        in
+        menuViewPlusEntities entities width height menu
+                
+                    
+
+
+
 
 gameConfigView : GameConfigModel -> Int -> Int -> List (Html Msg)
 gameConfigView gcModel width height=
@@ -846,6 +957,10 @@ gameConfigView gcModel width height=
                         ++ cancelButton
                 SDVConfigured _ _ ->
                         [ Html.h1 [] [ Html.text "Starting your match..." ] ]
+                SDVP1ChoosingPieces (_, p) _ ->
+                    placementView width height p
+                SDVP2ChoosingPieces _ (_, p) ->
+                    placementView width height p
 
 
 keyDecoder : Decode.Decoder Msg
@@ -865,7 +980,7 @@ subscriptions _ =
                  [ Browser.Events.onResize SetWindowSize
                  , Browser.Events.onClick (mouseDecoder)
                  , Browser.Events.onKeyPress (keyDecoder) 
-
+                 , Browser.Events.onAnimationFrameDelta (KeyFrame)
                  ]
 
 view : Model -> Html Msg
@@ -970,6 +1085,50 @@ update msg model =
                                                 case spot of
                                                         "1" -> sceneNone (Battle defaultBattleModel)
                                                         _ -> sceneNone (GameConfig (SDVChosenOneName n1 n2))
+                                        SDVP1ChoosingPieces (n1, p) n2 ->
+                                                let
+                                                    popts = placementOptions p
+                                                in
+                                                case (List.length p, List.length popts, spot) of 
+                                                        (5, _, "1") -> sceneNone (GameConfig (SDVP2ChoosingPieces (n1, armyFromList p) (n2, [])))
+                                                        (0, _, "5") -> sceneNone (GameConfig (SDVConfigured n1 n2))
+                                                        (_, 4, "5") -> sceneNone (GameConfig (SDVP1ChoosingPieces (n1, List.take (List.length p - 1) p) n2))
+                                                        (_, 2, "3") -> sceneNone (GameConfig (SDVP1ChoosingPieces (n1, List.take (List.length p - 1) p) n2))
+                                                        (_, _, s) -> sceneNone 
+                                                            (GameConfig (SDVP1ChoosingPieces 
+                                                                (n1
+                                                                , (Array.fromList popts
+                                                                    |> Array.get (String.toInt s 
+                                                                        |> Maybe.withDefault 1
+                                                                        |> (+) -1) 
+                                                                    |> Maybe.withDefault Obliterated) 
+                                                                    |> List.singleton
+                                                                    |> List.append p) n2))
+                                        SDVP2ChoosingPieces (n1, a) (n2, p) ->
+                                                let
+                                                    popts = placementOptions p
+                                                in
+                                                case (List.length p, List.length popts, spot) of 
+                                                        (5, _, "1") -> sceneNone 
+                                                                (Battle 
+                                                                    { player1 = { name = n1, army = a, health = 5 }
+                                                                    , player2 = { name = n2, army = armyFromList p, health = 5 }
+                                                                    , battlePhase = PlayerTurn (Turn First Nothing)
+                                                                    , playMode = SingleDeviceVs
+                                                                    }
+                                                                )
+                                                        (0, _, "5") -> sceneNone (GameConfig (SDVP1ChoosingPieces (n1, armyPiecesList a) n2))
+                                                        (_, 4, "5") -> sceneNone (GameConfig (SDVP2ChoosingPieces (n1, a) (n2, List.take (List.length p - 1) p)))
+                                                        (_, 2, "3") -> sceneNone (GameConfig (SDVP2ChoosingPieces (n1, a) (n2, List.take (List.length p - 1) p)))
+                                                        (_, _, s) -> sceneNone 
+                                                            (GameConfig (SDVP2ChoosingPieces 
+                                                                (n1, a)
+                                                                (n2 , (Array.fromList popts 
+                                                                    |> Array.get (String.toInt s 
+                                                                        |> Maybe.withDefault 0) 
+                                                                    |> Maybe.withDefault Obliterated) 
+                                                                    |> List.singleton
+                                                                    |> List.append p)))
                         _ -> ( model, Cmd.none )
         Click spot ->
                 case model.gameScene of
@@ -981,6 +1140,24 @@ update msg model =
                         | width = w
                         , height = h
                 } |> sansCmd
+        KeyFrame time ->
+            let
+                timeExpired = (>) 0
+            in
+            case model.gameScene of
+                Animation ((current, tRemaining)::next) nextScene ->
+                    -- reduce time on current and if below zero remove  and return
+                    if tRemaining - time |> timeExpired then
+                        if List.length next > 0 then
+                            sceneNone (Animation next nextScene)
+                        else
+                            sceneNone nextScene 
+                    else
+                        sceneNone (Animation ((current, (tRemaining - time))::next) nextScene)
+                Animation [] nextScene ->
+                    sceneNone nextScene
+                _ ->
+                    (model, Cmd.none)
         _ ->
                 (model, Cmd.none)
 
@@ -995,21 +1172,21 @@ defaultBattleModel =
         { player1 =
                 { name = "player1"
                 , army = Army 
-                        (Active Orange Authentic)
-                        (Active Blue Authentic)
-                        (Active Orange Deceitful)
+                        (Piece Orange Authentic)
+                        (Piece Blue Authentic)
+                        (Piece Orange Deceitful)
                         (Obliterated)
-                        (Active Blue Authentic)
+                        (Piece Blue Authentic)
                 , health = 5
                 }
         , player2 =
                 { name = "player2"
                 , army = Army 
-                        (Active Orange Authentic)
-                        (Active Orange Authentic)
-                        (Active Orange Authentic)
-                        (Active Blue Authentic)
-                        (Active Blue Authentic)
+                        (Piece Orange Authentic)
+                        (Piece Orange Authentic)
+                        (Piece Orange Authentic)
+                        (Piece Blue Authentic)
+                        (Piece Blue Authentic)
                 , health = 5
                 }
         , battlePhase = PlayerTurn (Turn First Nothing)
@@ -1019,7 +1196,7 @@ defaultBattleModel =
 
 init : () -> ( Model, Cmd Msg)
 init _ =
-        (       { gameScene = Title --Battle defaultBattleModel
+        (       { gameScene = GameConfig (SDVP1ChoosingPieces ("Alice", []) "Bob") --Title --Battle defaultBattleModel
                 , config = initConfig
                 , debugMode = True
                 , width = 0
