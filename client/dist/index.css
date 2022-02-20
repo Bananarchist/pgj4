@@ -1,0 +1,80 @@
+html,
+body {
+  background: black;
+  padding: 0;
+  margin: 0;
+  height: 100vh;
+  width: 100vw;
+}
+main svg {
+  position: absolute;
+  z-index: 1000;
+  font-family: Impact;
+}
+main div {
+  position: absolute;
+  z-index: 1;
+}
+.menuText {
+  font-size: 8vh;
+  fill: black;
+}
+
+.blackFill {
+		fill: black;
+}
+
+.purpleFill {
+		fill: purple;
+}
+
+.redFill {
+		fill: red;
+}
+
+.whiteFill {
+		fill: white;
+}
+
+.menuSize {
+		font-size: 8vh;
+}
+
+.signSize {
+		font-size: 16vh;
+}
+
+#help-overlay {
+  position: absolute;
+  z-index: 2000;
+}
+
+.modal {
+  position: absolute;
+  z-index: 3000;
+  background: grey;
+  font-color: white;
+	height: 100vh;
+	width: 100vw;
+}
+.full-flex {
+		display: flex;
+		width: 100vw;
+		height: 100vh;
+		flex-direction: column;
+		background: black;
+		color: white;
+		place-content: space-evenly;
+		box-sizing: border-box;
+		padding: 25%;
+}
+
+.full-flex > menu {
+		text-align: right;
+}
+
+button {
+		margin: 1em;
+		padding: 1em;
+}
+
