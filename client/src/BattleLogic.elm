@@ -1,4 +1,4 @@
-module Logic exposing (..)
+module BattleLogic exposing (..)
 
 import Basics.Extra exposing (flip)
 
@@ -26,15 +26,12 @@ dishonestOrange = Piece Orange Deceitful
 type Army 
         = Army Piece Piece Piece Piece Piece
 
-
+initialArmy : Army
 initialArmy = 
         Army Obliterated Obliterated Obliterated Obliterated Obliterated
 
 type Msg 
-        = SetArmy Army
-        | SetName Name
-        | SwitchPieces Spot Spot
-        | Connected Name Address
+        = SwitchPieces Spot Spot
         | FirePiece Spot
         | ForfeitGame
 
@@ -43,15 +40,9 @@ type alias PlayerModel =
         , health : Int
         }
 
-
-type Mood
-        = Intrigued
-        | Tense
-        | Danger
-        | Excited
-        | Crushed
-        | Triumphant
-
+initialPlayerModel : Army -> PlayerModel
+initialPlayerModel army =
+    PlayerModel army 5
 
 type alias BattleModel =
         { p1 : PlayerModel
@@ -59,9 +50,12 @@ type alias BattleModel =
         , phase : BattlePhase
         } 
 
+initialBattleModel : PlayerModel -> PlayerModel -> BattleModel
+initialBattleModel p1m p2m =
+    BattleModel p1m p2m (Player1 First)
+
 type BattleState
-        = Initialized (Maybe Army) (Maybe Army)
-        | Battle BattleModel
+        = Battle BattleModel
         | Player1Victory
         | Player2Victory
 
@@ -78,12 +72,12 @@ type BattlePhase
         = Player1 Turn
         | Player2 Turn
 
-
-initializeBattle =
-        Initialized Nothing Nothing
-
-startBattle army1 army2 =
-    Battle { p1 = { army = army1, health = 5 }, p2 = { army = army2, health = 5 }, phase = Player1 First }
+type TurnRecap 
+    = SuccessfulShot Spot
+    | UnsuccessfulShot Spot
+    | Damaged Spot
+    | SwappedPieces Spot Spot
+    | GameEnded
 
 player1Health bState =
     case bState of 
@@ -444,3 +438,6 @@ initBattleState =
         { p1 = Nothing
         , p2 = Nothing
         }
+
+
+
