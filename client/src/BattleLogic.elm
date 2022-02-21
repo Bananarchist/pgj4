@@ -48,11 +48,12 @@ type alias BattleModel =
         { p1 : PlayerModel
         , p2 : PlayerModel
         , phase : BattlePhase
+        , recap : List TurnRecap
         } 
 
 initialBattleModel : PlayerModel -> PlayerModel -> BattleModel
 initialBattleModel p1m p2m =
-    BattleModel p1m p2m (Player1 First)
+    BattleModel p1m p2m (Player1 First) []
 
 type BattleState
         = Battle BattleModel
@@ -77,6 +78,8 @@ type TurnRecap
     | UnsuccessfulShot Spot
     | Damaged Spot
     | SwappedPieces Spot Spot
+    | MovedToEmptySpot Spot Spot
+    | TurnEnded
     | GameEnded
 
 player1Health bState =
@@ -254,30 +257,49 @@ killPieceAt spot =
 
 switchActivePieces : Spot -> Spot -> BattleModel -> BattleModel
 switchActivePieces spot1 spot2 ({p1, p2, phase} as bMod) =
+        let
+            pGetter = 
+                case phase of 
+                    Player1 _ -> .p1
+                    Player2 _ -> .p2
+            army = (pGetter >> .army) bMod
+            srcPiece = getPieceAt spot1 army
+            destPiece = getPieceAt spot2 army
+            swapped =
+                case (srcPiece, destPiece) of
+                    (Obliterated, _) -> False
+                    (_, Obliterated) -> False
+                    (_, _) -> True
+            recap = if swapped then [ SwappedPieces spot1 spot2 ] else [ MovedToEmptySpot spot1 spot2 ]
+        in
         case phase of 
                 Player1 _ -> 
-                        { bMod | p1 = { p1 | army = updatePieceAt spot2 (getPieceAt spot1 p1.army) (updatePieceAt spot1 (getPieceAt spot2 p1.army) p1.army) } }
+                        { bMod | p1 = { p1 | army = updatePieceAt spot2 (srcPiece) (updatePieceAt spot1 (destPiece) p1.army) } } 
+                        |> updateRecap recap
                 Player2 _ ->
-                        { bMod | p2 = { p1 | army = updatePieceAt spot2 (getPieceAt spot1 p2.army) (updatePieceAt spot1 (getPieceAt spot2 p2.army) p2.army) } }
+                        { bMod | p2 = { p1 | army = updatePieceAt spot2 (srcPiece) (updatePieceAt spot1 (destPiece) p2.army) } }
+                        |> updateRecap recap
 
 
+modelWithPhase : BattlePhase -> BattleModel -> BattleModel
 modelWithPhase p bMod =
         { bMod | phase = p }
 
 reduceTurns bMod =
-        bMod |>
-                case bMod.phase of
-                        Player1 First -> 
-                                modelWithPhase <| Player1 Second
-                        
-                        Player1 Second -> 
-                                modelWithPhase <| Player2 First
+    case bMod.phase of
+            Player1 First -> 
+                    modelWithPhase (Player1 Second) bMod
+            
+            Player1 Second -> 
+                    modelWithPhase (Player2 First) bMod
+                    |> updateRecap [ TurnEnded ]
 
-                        Player2 First -> 
-                                modelWithPhase <| Player2 Second
+            Player2 First -> 
+                    modelWithPhase (Player2 Second) bMod
 
-                        Player2 Second -> 
-                                modelWithPhase <| Player1 First
+            Player2 Second -> 
+                    modelWithPhase (Player1 First) bMod
+                    |> updateRecap [ TurnEnded ]
 
 
 p1Model =
@@ -407,13 +429,16 @@ fireActivePiece spot bMod =
                         { p | army = killPieceAt s p.army }
         in
         case (resolvedShot, bMod.phase) of
-                (DamageTaken, Player1 _) -> { bMod | p2 = playerDamaged bMod.p2}
-                (DamageTaken, Player2 _) -> { bMod | p1 = playerDamaged bMod.p1}
-                (NoDamage, _) -> bMod
-                (TargetObliterated, Player1 _) -> { bMod | p2 = killPlayerPieceAt translatedSpot bMod.p2  }
-                (TargetObliterated, Player2 _) -> { bMod | p1 = killPlayerPieceAt translatedSpot bMod.p1  }
+                (DamageTaken, Player1 _) -> { bMod | p2 = playerDamaged bMod.p2} |> updateRecap [ Damaged spot ]
+                (DamageTaken, Player2 _) -> { bMod | p1 = playerDamaged bMod.p1} |> updateRecap [ Damaged spot ]
+                (NoDamage, _) -> bMod |> updateRecap [ UnsuccessfulShot spot ]
+                (TargetObliterated, Player1 _) -> { bMod | p2 = killPlayerPieceAt translatedSpot bMod.p2  } |> updateRecap [ SuccessfulShot spot ]
+                (TargetObliterated, Player2 _) -> { bMod | p1 = killPlayerPieceAt translatedSpot bMod.p1  } |> updateRecap [ SuccessfulShot spot]
 
 
+updateRecap : List TurnRecap -> BattleModel -> BattleModel
+updateRecap newEvents bMod =
+    { bMod | recap = newEvents ++ bMod.recap }
                         
 
 updateBattleState bAct bState =
