@@ -64,13 +64,13 @@ suite =
                 [ test "And fail to destroy a piece" <|
                     \_ ->
                         let
-                            p1 = Army Obliterated (Piece Orange Authentic) Obliterated Obliterated Obliterated 
+                            p1 = Army Obliterated Obliterated Obliterated (Piece Orange Authentic) Obliterated 
                                 |> BL.initialPlayerModel
                             p2 = Army Obliterated (Piece Blue Authentic) Obliterated (Piece Orange Authentic) Obliterated 
                                 |> BL.initialPlayerModel
                             bm = BL.initialBattleModel p1 p2
                             bs = BL.Battle bm
-                            act = Fire 2
+                            act = Fire 4
                             nbs = BL.updateBattleState act bs
                             testCase : (Army, List TurnRecap)
                             testCase = 
@@ -84,19 +84,19 @@ suite =
                             [ Tuple.first >> Expect.equal 
                                 (Army Obliterated (Piece Blue Authentic) Obliterated (Piece Orange Authentic) Obliterated)
                             , Tuple.second >> Expect.equal
-                                [ UnsuccessfulShot 2 ]
+                                [ UnsuccessfulShot 4 ]
                             ] testCase
 
                 , test "And destroy a piece" <|
                     \_ ->
                         let
-                            p1 = Army Obliterated (Piece Orange Authentic) Obliterated Obliterated Obliterated 
+                            p1 = Army Obliterated Obliterated Obliterated (Piece Orange Authentic) Obliterated 
                                 |> BL.initialPlayerModel
                             p2 = Army Obliterated (Piece Blue Authentic) Obliterated (Piece Blue Authentic) Obliterated 
                                 |> BL.initialPlayerModel
                             bm = BL.initialBattleModel p1 p2
                             bs = BL.Battle bm
-                            act = Fire 2
+                            act = Fire 4
                             nbs = BL.updateBattleState act bs
                             testCase : (Army, List TurnRecap)
                             testCase = 
@@ -110,14 +110,14 @@ suite =
                             [ Tuple.first >> Expect.equal 
                                 (Army Obliterated (Piece Blue Authentic) Obliterated Obliterated Obliterated)
                             , Tuple.second >> Expect.equal
-                                [ SuccessfulShot 2 ]
+                                [ SuccessfulShot 4 ]
                             ] testCase
                 , test "And cause damage to opponent" <|
                     \_ ->
                         let
                             p1 = Army Obliterated (Piece Orange Authentic) Obliterated Obliterated Obliterated 
                                 |> BL.initialPlayerModel
-                            p2 = Army Obliterated (Piece Blue Authentic) Obliterated Obliterated Obliterated 
+                            p2 = Army Obliterated Obliterated (Piece Blue Authentic) Obliterated Obliterated 
                                 |> BL.initialPlayerModel
                             bm = BL.initialBattleModel p1 p2
                             bs = BL.Battle bm
@@ -134,7 +134,7 @@ suite =
                         Expect.all
                             [ Tuple.first >> Expect.all
                                 [ .army >> Expect.equal 
-                                    (Army Obliterated (Piece Blue Authentic) Obliterated Obliterated Obliterated)
+                                    (Army Obliterated Obliterated (Piece Blue Authentic) Obliterated Obliterated)
                                 , .health >> Expect.equal 4 
                                 ]
                             , Tuple.second >> Expect.equal
@@ -145,10 +145,11 @@ suite =
                 [ test "By causing damage to single health opponent" <|
                     \_ ->
                         let
-                            fkarmy = Army Obliterated (Piece Orange Authentic) Obliterated Obliterated Obliterated 
-                            p1 = fkarmy
+                            p1army = Army Obliterated (Piece Orange Authentic) Obliterated Obliterated Obliterated 
+                            p2army = Army Obliterated Obliterated (Piece Orange Authentic) Obliterated Obliterated 
+                            p1 = p1army
                                 |> BL.initialPlayerModel
-                            p2 = { p1 | health = 1 }
+                            p2 = { p1 | health = 1, army = p2army }
                             bm = BL.initialBattleModel p1 p2
                             bs = BL.Battle bm
                             act = Fire 2
@@ -160,7 +161,9 @@ suite =
                                     _ ->
                                         p2
                         in
-                        Expect.equal nbs BL.Player1Victory
+                        case nbs of
+                            BL.Player1Victory _ -> Expect.pass
+                            _ -> Expect.fail "Player1 not victorious"
                 ]
             , describe "Can take two actions"
                 [ test "And then it is the other player's turn" <|

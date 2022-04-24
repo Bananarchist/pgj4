@@ -57,8 +57,8 @@ initialBattleModel p1m p2m =
 
 type BattleState
         = Battle BattleModel
-        | Player1Victory
-        | Player2Victory
+        | Player1Victory (List TurnRecap)
+        | Player2Victory (List TurnRecap)
 
 type BattleAction
         = Switch Spot Spot
@@ -219,6 +219,40 @@ armyFromList l =
         in
         Army p1 p2 p3 p4 p5
 
+getHueAt : Bool -> Int -> Army -> Maybe Hue
+getHueAt trueColor spot army =
+    let piece = getPieceAt spot army
+    in case piece of 
+        Piece h Authentic -> Just h
+        Piece Orange Deceitful -> if trueColor then Just Orange else Just Blue
+        Piece Blue Deceitful -> if trueColor then Just Blue else Just Orange
+        _ -> Nothing
+
+hueString : Hue -> String
+hueString h =
+    case h of
+        Blue -> "Blue"
+        Orange -> "Orange"
+
+oppositeHue : Hue -> Hue
+oppositeHue h =
+    case h of
+        Blue -> Orange
+        Orange -> Blue
+
+getHonestyAt : Int -> Army -> Maybe Honesty
+getHonestyAt spot army =
+    let piece = getPieceAt spot army
+    in case piece of
+        Piece _ h -> Just h
+        _ -> Nothing
+
+honestyString : Honesty -> String
+honestyString honesty =
+    case honesty of
+        Authentic -> "Authentic"
+        Deceitful -> "Deceitful"
+
 updateHueAt spot newHue (Army p1 p2 p3 p4 p5 as army) =
         let 
             piece = getPieceAt spot army
@@ -310,9 +344,9 @@ p2Model =
 victory bMod =
         case bMod.phase of
                 Player1 _ ->
-                        Player1Victory
+                        Player1Victory []
                 Player2 _ ->
-                        Player2Victory
+                        Player2Victory []
 
 test bMod =
         Just bMod
@@ -355,10 +389,10 @@ validate bMod mb =
                 Just b -> Battle b
                 Nothing ->
                         case bMod.phase of
-                                Player1 Second -> Player1Victory
-                                Player2 First -> Player1Victory
-                                Player2 Second -> Player2Victory
-                                Player1 First -> Player2Victory
+                                Player1 Second -> Player1Victory []
+                                Player2 First -> Player1Victory []
+                                Player2 Second -> Player2Victory []
+                                Player1 First -> Player2Victory []
 
 
 checkVictory bMod =
@@ -394,26 +428,24 @@ shotResolver src target =
                 (Piece _ _, True) -> NoDamage
                 (Piece _ _, False) -> TargetObliterated
 
---mapPlayer1Pieces fn bMod =
---        let
---            player = 
+translatedSpot : Spot -> Spot
+translatedSpot spot = 
+        case spot of 
+                1 -> 5
+                2 -> 4
+                3 -> 3
+                4 -> 2
+                5 -> 1
+                _ -> 1
 
 fireActivePiece spot bMod =
         let
-                translatedSpot = 
-                        case spot of 
-                                1 -> 5
-                                2 -> 4
-                                3 -> 3
-                                4 -> 2
-                                5 -> 1
-                                _ -> 1
                 armyGetter p =
                             bMod
                             |> p
                             |> .army
                 resolveShot src target =
-                        shotResolver (armyGetter src |> getPieceAt spot) (armyGetter target |> getPieceAt translatedSpot)
+                        shotResolver (armyGetter src |> getPieceAt spot) (armyGetter target |> getPieceAt spot)
 
                 resolvedShot = 
                         case bMod.phase of 
@@ -432,8 +464,8 @@ fireActivePiece spot bMod =
                 (DamageTaken, Player1 _) -> { bMod | p2 = playerDamaged bMod.p2} |> updateRecap [ Damaged spot ]
                 (DamageTaken, Player2 _) -> { bMod | p1 = playerDamaged bMod.p1} |> updateRecap [ Damaged spot ]
                 (NoDamage, _) -> bMod |> updateRecap [ UnsuccessfulShot spot ]
-                (TargetObliterated, Player1 _) -> { bMod | p2 = killPlayerPieceAt translatedSpot bMod.p2  } |> updateRecap [ SuccessfulShot spot ]
-                (TargetObliterated, Player2 _) -> { bMod | p1 = killPlayerPieceAt translatedSpot bMod.p1  } |> updateRecap [ SuccessfulShot spot]
+                (TargetObliterated, Player1 _) -> { bMod | p2 = killPlayerPieceAt spot bMod.p2  } |> updateRecap [ SuccessfulShot spot ]
+                (TargetObliterated, Player2 _) -> { bMod | p1 = killPlayerPieceAt spot bMod.p1  } |> updateRecap [ SuccessfulShot spot]
 
 
 updateRecap : List TurnRecap -> BattleModel -> BattleModel
