@@ -1,0 +1,175 @@
+html,
+body {
+  padding: 0;
+  margin: 0;
+  height: 100vh;
+  width: 100vw;
+}
+main svg {
+  position: absolute;
+  z-index: 1000;
+  font-family: Impact;
+}
+main div {
+  z-index: 1;
+}
+.menuText {
+  font-size: 8vh;
+  fill: black;
+}
+
+.blackFill {
+		fill: black;
+}
+
+.purpleFill {
+		fill: purple;
+}
+
+.redFill {
+		fill: red;
+}
+
+.whiteFill {
+		fill: white;
+}
+
+.menuSize {
+		font-size: 8vh;
+}
+
+.signSize {
+		font-size: 16vh;
+}
+
+#help-overlay {
+  position: absolute;
+  z-index: 2000;
+}
+
+.modal {
+  position: absolute;
+  z-index: 3000;
+  background: grey;
+  font-color: white;
+	height: 100vh;
+	width: 100vw;
+}
+.full-flex {
+		display: flex;
+		width: 100vw;
+		height: 100vh;
+		flex-direction: column;
+		background: black;
+		color: white;
+		place-content: space-evenly;
+		box-sizing: border-box;
+		padding: 25%;
+}
+
+.full-flex > menu {
+		text-align: right;
+}
+
+button {
+		margin: 1em;
+		padding: 1em;
+		flex: 1 0 auto;
+}
+
+.nogfx.battle button {
+	font-size: 0.7rem;
+	padding: 0.1rem 0.2rem;
+	margin: 0 0.1rem;
+}
+
+.nogfx.battle .piece {
+	width: 20ch;
+	border: solid 1px;
+	border-radius: 5px;
+	text-align: center;
+	flex: 1 1 auto;
+}
+
+.nogfx.battle .piece > fieldset {
+	font-size: 0.8rem;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.nogfx.battle .piece fieldset fieldset {
+	margin: 0;
+	padding: 0;
+	border: none;
+	display: flex;
+	flex-direction: row;
+}
+
+.nogfx.battle .piece fieldset fieldset span {
+	align-self: center;
+}
+
+.nogfx.battle .army {
+	display: flex;
+}
+
+#lobby {
+	display: grid;
+	grid-template-areas:
+		"chat chat userlist"
+		"chat chat gamelist"
+		"chatinput chatinput controlpanel";
+	width: 100%;
+	height: 100%;
+	grid-template-columns: 3fr 3fr 1fr;
+	grid-template-rows: auto auto 3rem;
+}
+
+
+
+#lobby #chat {
+	grid-area: chat;
+}
+
+#lobby #chatinputfieldset {
+	grid-area: chatinput;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	width: 100%;
+	display: flex;
+}
+
+#lobby #userlist {
+	grid-area: userlist;
+	border-bottom: solid 1px;
+	border-left: solid 1px;
+	overflow-y: scroll;
+}
+
+#lobby #gamelist {
+	grid-area: gamelist;
+	border-bottom: solid 1px;
+	border-left: solid 1px;
+	overflow-y: scroll;
+}
+
+#lobby #controlpanel {
+	grid-area: controlpanel;
+}
+
+#lobby #chatinput {
+	flex: 1 1 auto;
+}
+
+#lobby #chatinputfieldset button {
+	flex: 0 0 auto;
+}
+
+#lobby button {
+	margin: 0;
+	padding: 0;
+}
+

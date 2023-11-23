@@ -1,0 +1,167 @@
+<html>
+
+<head></head>
+
+<body>
+  <fieldset id=joinForm>
+    <input type=text id=lobbyName />
+    <button type=button onClick=init()>Join</button>
+  </fieldset>
+  <section id=controls>
+    <ul id=user-list>
+    </ul>
+    <ul id=game-list>
+    </ul>
+    <fieldset>
+      <label>Lobby Commands</label>
+      <input type=text id=gameName />
+      <button type=button id=createGameButton>Create game</button>
+      <button type=button id=sendPieces>Send Pieces</button>
+    </fieldset>
+    <fieldset>
+      <label>Game Commands</label>
+      <input type=number id=source />
+      <input type=number id=target />
+      <button type=button id=attack>Attack</button>
+      <button type=button id=move>Move pieces</button>
+      <button type=button id=forfeit>Forfeit game</button>
+    </fieldset>
+    <section id=chat>
+      <fieldset>
+        <input type=text id=chat-message>
+        <button type=button id=testSubmitButton>Send</button>
+      </fieldset>
+    </section>
+  </section>
+  <article id=output></article>
+  <script type=text/javascript>
+      var wsUri = 'ws://localhost:9160';
+      
+      function init() {
+        output = document.getElementById('output');
+        input = document.getElementById('joinForm');
+        controls = document.getElementById('controls');
+        input.style.display='none';
+        controls.style.display='block';
+        testWebSocket({
+                debug(evt) {
+                        console.log(evt);
+                },
+                report(evt) {
+                        output.innerHTML = evt;
+                }
+        });
+
+      }
+
+
+      function clearAndPopulate(parent, newChildren) {
+        while(parent.firstChild) {
+          parent.removeChild(parent.firstChild);
+        }
+        newChildren.forEach(u => {
+          let newEl = document.createElement("li");
+          let newText = document.createTextNode(u);
+          newEl.appendChild(newText);
+          parent.appendChild(newEl);
+        });
+      }
+
+      function addChatMsg(msg) {
+        //create chat msg el
+        let newEl = document.createElement("p");
+        let newText = documnet.createTextNode(`${msg.sender_id}: ${msg.messge}`);
+        newEl.appendChild(newText);
+        document.querySelector("chat fieldset").insertBefore(newEl);
+      }
+
+      function pollUsers() {
+        ws.send(JSON.stringify({msg: "ListUsers"}));
+        return setTimeout(pollUsers, 2500);
+      }
+
+      function pollGames() {
+        ws.send(JSON.stringify({msg: "ListGames"}));
+        return setTimeout(pollGames, 2500);
+      }
+
+      function testWebSocket({debug, report}) {
+        ws = new WebSocket(wsUri);
+        var state = {
+          userList: [],
+          userNode: document.getElementById('user-list'),
+          gameList: [],
+          gameNode: document.getElementById('game-list'),
+          userPollTimeout: null,
+          gamePollTimeout: null
+        };
+
+        isUserList = msg => msg?.info == 'user-list';
+        isGameList = msg => msg?.info == 'game-list';
+        isUserJoined = msg => msg?.event == 'user-joined';
+        isNameSet = msg => msg?.event == 'name-set';
+        isGameAdded = msg => msg?.event == 'game-added';
+        isPieceRequested = msg => msg?.event == 'piece-requested';
+        isGameBegun = msg => msg?.event == 'game-begun';
+        isChat = msg => msg?.event == 'chat';
+
+        msgHandler = function(e) {
+          debug(e);
+          data = JSON.parse(e.data);
+          debug(data);
+          if(isUserList(data)) {
+            clearAndPopulate(state.userNode, data.data);
+            state.userList = data.data;
+          } else if(isGameList(data)) {
+            clearAndPopulate(state.gameNode, data.data.map(g => g.name));
+            state.gameList = data.data;
+          } else if(isUserJoined(data)) {
+            //confirmed I guess
+          } else if(isNameSet(data)) {
+            //set name
+          } else if(isGameAdded(data)) {
+            //confirmed i guess
+          } else if(isPiecesRequested(data)) {
+            // "in game mode" and can send pieces
+          } else if(isGameBegun(data)) {
+            // maybe can start sending moves?
+          } else if(isChat(data)) {
+            addChatMsg(data);
+          } 
+
+          console.log(state);
+        };
+        ws.onmessage=msgHandler;
+        ws.onopen = function() {
+          ws.send(JSON.stringify({msg: "SetName", name: document.getElementById('lobbyName').value}));
+          //state.userPollTimeout = pollUsers();
+          //state.gamePollTimeout = pollGames();
+        };
+        document.getElementById('#testSubmitButton').addEventListener('click', function(e) {
+          ws.send(JSON.stringify({msg: "SendChat", msg: document.getElementById('chat-message').value}));
+        });
+
+        document.getElementById('createGameButton').addEventListener('click', function(e) {
+          ws.send(JSON.stringify({msg: "HostGame", name: document.getElementById('gameName').value}));
+        });
+
+        document.getElementById('sendPieces').addEventListener('click', function(e) {
+          ws.send(JSON.stringify({msg: "SetPieces", pieces: 
+            [ { color: "orange", honest: true },
+              { color: "blue", honest: true },
+              { color: "orange", honest: false },
+              { color: "blue", honest: false },
+              { color: "blue", honest: true }
+            ]}
+            ));
+        });
+      }
+    </script>
+  <style>
+    #controls {
+      display: none;
+    }
+  </style>
+</body>
+
+</html>
